@@ -1,0 +1,1010 @@
+---
+title: "STAT 405 \n Final Presentation"
+author: "Jacob Kauffman"
+date: "12/2/2021"
+output: ioslides_presentation
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Main Question
+<div class = "yellow">
+<font size = "12">
+How has the COVID-19 pandemic affected the way that the City of New York responds to EMS calls?
+__________________________
+</font>
+</div>
+<center>
+
+
+## Primary Dataset: EMS Incident Dispatch Data
+
+* Publicly available from City of New York
+* 21.8 million EMS calls recorded over last 10 years
+* Filtered two time periods:
+  * Pre-COVID: 3/23/2019 to 12/31/2019
+  * During COVID: 3/23/2020 to 12/31/2020
+* Variables of interest:
+  * date/time, final call type, incident response time, date/time en route to and arrived at hospital, borough, police precinct 
+
+## Secondary Dataset: Motor Vehicle Collisions
+
+<div class = "white">
+</div>
+* **The inherent link between automobile accidents and EMS calls provides a new dimension of analysis to our primary data set.**
+* Publicly available from City of New York
+* 1.84 million crashes over overlapping time frame
+* Filtered two time periods: Pre-COVID, during COVID
+* Variables of interest:
+    * Crash date, number of injuries, number of deaths
+
+## Sub-Questions
+
+<div class = "white">
+* SPACER
+* SPACER
+</div>
+
+1. How did call types change pre-COVID versus during COVID?
+2. How did transport time to hospitals change pre-COVID versus during COVID?
+3. Are automobile accidents and the nature of EMS calls related, both pre-COVID and during COVID?
+
+# Sub-Question #1
+
+<div class = "yellow">
+<font size = "12">
+How did call types change pre-COVID versus during COVID?
+__________________________
+</font>
+</div>
+<center>
+
+## Recategorizing Call Types
+
+<div class = "white">
+* SPACER
+* SPACER
+</div>
+* **To make the data more meaningful and approachable, we regrouped some of these 270 call types into new, broader call types.**
+* We mined for different prefixes in order to find and combine similar call types into one uniform call code.
+* 268 call types --> 123 call types
+
+## 
+<div class = "black">
+</div>
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="EMS Final Call Types in NYC Boroughs, Pre-COVID vs. During COVID", fig.width=8, fig.height=4}
+library(knitr) 
+library(tidyverse)
+library(forcats)
+library(gridExtra)
+library(RSQLite)
+library(jsonlite)
+library(gtable)
+library(grid)
+library(latex2exp)
+library(gridBase)
+library(nnet)
+library(ggplot2)
+library(stringr)
+library(gtable)
+library(scales)
+
+dcon <- dbConnect(SQLite(), dbname =
+                    "~/Documents/Stat 405/Data/EMS_Incident_Dispatch_Data.db")
+initExtension(dcon)
+
+### Reading in during COVID data:
+res = dbSendQuery(conn = dcon, "SELECT *
+FROM EMS_Incident_Dispatch_Data
+WHERE CAST(substring(INCIDENT_DATETIME, 1, 2) as int) >= 3
+AND CASE WHEN CAST(substring(INCIDENT_DATETIME, 1, 2) as int) == 3 THEN 
+CAST(substring(INCIDENT_DATETIME, 4, 2) as int) >= 23 ELSE 
+cast(substring(INCIDENT_DATETIME, 4, 2) as int) >= 0 END
+AND CAST(substring(INCIDENT_DATETIME, 7, 4) as int) == 2020")
+covid_calls = dbFetch(res, -1)
+dbClearResult(res)
+
+covid_calls = select(covid_calls, INCIDENT_DATETIME, FIRST_TO_HOSP_DATETIME, FIRST_HOSP_ARRIVAL_DATETIME, INCIDENT_CLOSE_DATETIME, contains(c("FINAL","QY","_CODE")), BOROUGH, POLICEPRECINCT)
+covid_calls$INCIDENT_DATETIME = strptime(covid_calls$INCIDENT_DATETIME, format = "%m /%d/%Y %I:%M:%S %p", tz = "EST")
+covid_calls$MONTH = as.integer(substring(covid_calls$INCIDENT_DATETIME, 6, 7))
+covid_calls$YEAR = as.character(substring(covid_calls$INCIDENT_DATETIME, 1, 4))
+
+covid_calls <-  
+  covid_calls %>% 
+  filter(FINAL_CALL_TYPE != "UNKNOW") %>% 
+  filter(FINAL_CALL_TYPE != "OTHER") %>% 
+  filter(FINAL_CALL_TYPE != "SPEVNT") %>% 
+  filter(FINAL_CALL_TYPE != "STNDBY") %>% 
+  filter(FINAL_CALL_TYPE != "STRANS")
+
+
+### Reading in during COVID data:
+res = dbSendQuery(conn = dcon, "SELECT *
+FROM EMS_Incident_Dispatch_Data
+WHERE CAST(substring(INCIDENT_DATETIME, 1, 2) as int) >= 3
+AND CASE WHEN CAST(substring(INCIDENT_DATETIME, 1, 2) as int) == 3 THEN 
+CAST(substring(INCIDENT_DATETIME, 4, 2) as int) >= 23 ELSE 
+cast(substring(INCIDENT_DATETIME, 4, 2) as int) >= 0 END
+AND CAST(substring(INCIDENT_DATETIME, 7, 4) as int) == 2019")
+pre_covid_calls = dbFetch(res, -1)
+dbClearResult(res)
+
+pre_covid_calls = select(pre_covid_calls, INCIDENT_DATETIME, FIRST_TO_HOSP_DATETIME, FIRST_HOSP_ARRIVAL_DATETIME, INCIDENT_CLOSE_DATETIME, contains(c("FINAL","QY","_CODE")), BOROUGH, POLICEPRECINCT)
+pre_covid_calls$INCIDENT_DATETIME = strptime(pre_covid_calls$INCIDENT_DATETIME, format = "%m /%d/%Y %I:%M:%S %p", tz = "EST")
+pre_covid_calls$MONTH = as.integer(substring(pre_covid_calls$INCIDENT_DATETIME, 6, 7))
+pre_covid_calls$YEAR = as.character(substring(pre_covid_calls$INCIDENT_DATETIME, 1, 4))
+
+pre_covid_calls <-  
+  pre_covid_calls %>% 
+  filter(BOROUGH != "UNKNOWN") %>% 
+  filter(FINAL_CALL_TYPE != "UNKNOW") %>% 
+  filter(FINAL_CALL_TYPE != "OTHER") %>% 
+  filter(FINAL_CALL_TYPE != "SPEVNT") %>% 
+  filter(FINAL_CALL_TYPE != "STNDBY") %>% 
+  filter(FINAL_CALL_TYPE != "STRANS")
+
+covid = covid_calls
+pre_covid = pre_covid_calls
+
+### Filtering call types
+covid$FINAL_CALL_TYPE <- 
+  covid$FINAL_CALL_TYPE %>% 
+  str_replace_all("^(DRUG)+.*", "DRUG") %>% 
+  str_replace_all("^(CVA)+.*", "STROKE") %>% 
+  str_replace_all("^(ACTIVE|CHILDA|PD13|PEDST|RAPE|SHOT|STAB)+.*", "VIOL") %>% 
+  str_replace_all("^(MCI)+.*", "MCI") %>% 
+  str_replace_all("^(CARD|ARRE)+.*", "CARD") %>% 
+  str_replace_all("^(SIC|PEDF|PEDR|T-SICK)+.*", "SICK") %>% 
+  str_replace_all("^(ALTM|EDP)+.*", "PSYCH") %>% 
+  str_replace_all("^(AMP|INJ|T-INJ)+.*", "INJ") %>% 
+  str_replace_all("^(BURN|FIRE)+.*", "BURN/FIRE") %>% 
+  str_replace_all("^(HANG|JUMP)+.*", "SUIC") %>%  
+  str_replace_all("^(INBL|INB|BLEED)+.*", "BLEED") %>% 
+  str_replace_all("^(GYN|OB|LABOR)+.*", "OBST") %>% 
+  str_replace_all("^(ABD)+.*", "ABD") %>% 
+  str_replace_all("^(SEIZ|STAT)+.*", "SEIZ") %>%  
+  str_replace_all("^(ASTH|T-ASTH|DIF|RESP)+.*", "BREATH") %>%
+  str_replace_all("^(MVA)+.*", "MVA") %>% 
+  str_replace_all("^(UNC)+.*", "UNC") %>% 
+  str_replace_all("^(ANA|MED)+.*", "ALLERG") 
+
+pre_covid$FINAL_CALL_TYPE <- 
+  pre_covid$FINAL_CALL_TYPE %>% 
+  str_replace_all("^(DRUG)+.*", "DRUG") %>% 
+  str_replace_all("^(CVA)+.*", "STROKE") %>% 
+  str_replace_all("^(ACTIVE|CHILDA|PD13|PEDST|RAPE|SHOT|STAB)+.*", "VIOL") %>% 
+  str_replace_all("^(MCI)+.*", "MCI") %>% 
+  str_replace_all("^(CARD|ARRE)+.*", "CARD") %>% 
+  str_replace_all("^(SIC|PEDF|PEDR|T-SICK)+.*", "SICK") %>% 
+  str_replace_all("^(ALTM|EDP)+.*", "PSYCH") %>% 
+  str_replace_all("^(AMP|INJ|T-INJ)+.*", "INJ") %>% 
+  str_replace_all("^(BURN|FIRE)+.*", "BURN/FIRE") %>% 
+  str_replace_all("^(HANG|JUMP)+.*", "SUIC") %>%  
+  str_replace_all("^(INBL|INB|BLEED)+.*", "BLEED") %>% 
+  str_replace_all("^(GYN|OB|LABOR)+.*", "OBST") %>% 
+  str_replace_all("^(ABD)+.*", "ABD") %>% 
+  str_replace_all("^(SEIZ|STAT)+.*", "SEIZ") %>%  
+  str_replace_all("^(ASTH|T-ASTH|DIF|RESP)+.*", "BREATH") %>%
+  str_replace_all("^(MVA)+.*", "MVA") %>% 
+  str_replace_all("^(UNC)+.*", "UNC") %>% 
+  str_replace_all("^(ANA|MED)+.*", "ALLERG") 
+
+
+df1 <-
+  covid %>%
+  filter(FINAL_CALL_TYPE == c("DRUG","PSYCH","VIOL","SICK","BREATH", "MVA")) %>% 
+  select(FINAL_CALL_TYPE, BOROUGH, YEAR) %>% 
+  group_by(FINAL_CALL_TYPE, BOROUGH, YEAR) %>% 
+  summarise(TOTAL = n())
+
+df2 <-
+  pre_covid %>%
+  filter(FINAL_CALL_TYPE == c("DRUG","PSYCH","VIOL","SICK","BREATH", "MVA")) %>% 
+  select(FINAL_CALL_TYPE, BOROUGH, YEAR) %>% 
+  group_by(FINAL_CALL_TYPE, BOROUGH, YEAR) %>% 
+  summarise(TOTAL = n())
+
+df=full_join(df1, df2, by=c("BOROUGH", "FINAL_CALL_TYPE","YEAR","TOTAL"))
+
+
+p=ggplot(data=df, aes(x=FINAL_CALL_TYPE,y=TOTAL, fill=YEAR)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  xlab("Final Call Type") + ylab("Total Number of Calls") +
+  ggtitle("EMS Call Type in NYC Boroughs Before and During COVID")
+p=p+facet_wrap(vars(BOROUGH),ncol=2)
+p + theme(axis.text.x = element_text(size=9,hjust=1,angle=90))
+
+```
+
+## How did call types change pre-COVID versus during COVID?
+
+<div class = "white">
+*SPACER
+</div>
+
+<center>
+<div class = "yellow3">
+<font size = "6">
+*Drug-related, motor vehicle accidents, psychiatric, and especially sickness-related calls decreased during COVID, as we expected. More surprisingly, breath-related and psychiatric calls also decreased during COVID.*
+</font>
+</div>
+<center>
+
+##
+
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="Top 10 EMS Call Types in NYC, Pre-COVID vs. During COVID"}
+
+frequencies <- 
+  data.frame(table(pre_covid$FINAL_CALL_TYPE)) %>% 
+  arrange(desc(Freq))
+top_10_pre <- as.character(frequencies$Var1[1:10])
+
+pre_covid <- pre_covid %>% 
+  filter(FINAL_CALL_TYPE %in% top_10_pre)
+
+
+p1= pre_covid %>%
+  ggplot() + aes(x = reorder(FINAL_CALL_TYPE, FINAL_CALL_TYPE, function(x)-length(x))) +
+  geom_bar() +
+  coord_flip() + 
+  labs(title = "Pre-COVID")+ 
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+## Covid bar graph
+frequencies <- 
+  data.frame(table(covid$FINAL_CALL_TYPE)) %>% 
+  arrange(desc(Freq))
+top_10_during <- as.character(frequencies$Var1[1:10])
+
+covid <- covid %>% 
+  filter(FINAL_CALL_TYPE %in% top_10_during) 
+
+p2 = covid %>%
+  ggplot() + aes(x = reorder(FINAL_CALL_TYPE, FINAL_CALL_TYPE, function(x)-length(x))) +
+  geom_bar() +
+  coord_flip() + 
+  labs(title = "During COVID") + 
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+# Combine plots
+grid.arrange(p1,p2,ncol = 2,top="Top 10 Final Call Types",
+             left= "Count", bottom="Final Call Type")
+
+```
+
+## How did call types change pre-COVID versus during COVID?
+
+<div class = "white">
+*SPACER
+</div>
+
+<center>
+<div class = "yellow3">
+<font size = "6">
+*The ranking of the top 10 call types largely remained the same during COVID. However, the volume of those top 10 call types all decreased by about 25%.*
+</font>
+</div>
+<center>
+
+## 
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="Monthly Prevalence of Crime-Related EMS Calls, Pre-COVID vs. During COVID"}
+
+covid = covid_calls
+pre_covid = pre_covid_calls
+
+covid$FINAL_CALL_TYPE <- 
+  covid$FINAL_CALL_TYPE %>% 
+  str_replace_all("^(CARD|ARRES)+.*", "CARDIAC") %>% 
+  str_replace_all("^(RESP)+.*", "RESP") %>% 
+  str_replace_all("^(DIF)+.*", "BREATH") %>%  
+  str_replace_all("^(ASTH)+.*", "ASTHMA") %>% 
+  str_replace_all("^(SIC|PEDF|PEDR)+.*", "SICK") %>% 
+  str_replace_all("^(ACTIVE|SHOT)+.*", "SHOT") %>% 
+  str_replace_all("^(DRUG)+.*", "DRUG") %>% 
+  str_replace_all("^(RAPE)+.*", "RAPE") %>% 
+  str_replace_all("^(CHILDA)+.*", "CHILD ABUSE") %>% 
+  str_replace_all("^(STAB)+.*", "STAB") %>% 
+  str_replace_all("^(PEDST)+.*", "PEDST") 
+
+
+pre_covid$FINAL_CALL_TYPE <- 
+  pre_covid$FINAL_CALL_TYPE %>% 
+  str_replace_all("^(CARD|ARRES)+.*", "CARDIAC") %>% 
+  str_replace_all("^(RESP)+.*", "RESP") %>% 
+  str_replace_all("^(DIF)+.*", "BREATH") %>%  
+  str_replace_all("^(ASTH)+.*", "ASTHMA") %>% 
+  str_replace_all("^(SIC|PEDF|PEDR)+.*", "SICK") %>% 
+  str_replace_all("^(ACTIVE|SHOT)+.*", "SHOT") %>% 
+  str_replace_all("^(DRUG)+.*", "DRUG") %>% 
+  str_replace_all("^(RAPE)+.*", "RAPE") %>% 
+  str_replace_all("^(CHILDA)+.*", "CHILD ABUSE") %>% 
+  str_replace_all("^(STAB)+.*", "STAB") %>% 
+  str_replace_all("^(PEDST)+.*", "PEDST") 
+
+df1 <-
+  covid %>%
+  filter(FINAL_CALL_TYPE == c("SHOT", "DRUG","RAPE", "CHILD ABUSE"
+                              , "STAB", "PEDST")) %>% 
+  select(FINAL_CALL_TYPE, MONTH, YEAR) %>% 
+  group_by(FINAL_CALL_TYPE, MONTH, YEAR) %>% 
+  summarise(count = n())
+
+df2 <-
+  pre_covid %>%
+  filter(FINAL_CALL_TYPE == c("SHOT", "DRUG","RAPE", "CHILD ABUSE"
+                              , "STAB", "PEDST")) %>% 
+  select(FINAL_CALL_TYPE, MONTH, YEAR) %>% 
+  group_by(FINAL_CALL_TYPE, MONTH, YEAR) %>% 
+  summarise(count = n())
+
+df=full_join(df1, df2, by=c("MONTH", "FINAL_CALL_TYPE", "count", "YEAR"))
+
+p=ggplot(data=df, aes(x=MONTH,y=count,fill=FINAL_CALL_TYPE)) + 
+  geom_line(aes(color=FINAL_CALL_TYPE)) + geom_point(aes(color=FINAL_CALL_TYPE))
+p= p + facet_grid(cols = vars(YEAR)) + scale_x_continuous(breaks=c(1:12))
+p + xlab("Month") + ylab("Total # of Calls") + ggtitle("Crime-Related EMS Calls in NYC")
+
+```
+
+## How did call types change pre-COVID versus during COVID?
+
+<div class = "white">
+*SPACER
+</div>
+
+<center>
+<div class = "yellow3">
+<font size = "6">
+*The changes--or lack thereof--in crime-related EMS call types during COVID vary, suggesting that the changes imposed by the pandemic alleviated levels of only certain crimes.*
+</font>
+</div>
+<center>
+
+##
+
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="Monthly Prevalence of COVID Symptom-Related EMS Calls, Pre-COVID vs. During COVID"}
+df1 <-
+  covid %>%
+  filter(FINAL_CALL_TYPE == c("CARDIAC","RESP","BREATH","ASTHMA", "SICK")) %>% 
+  group_by(MONTH,FINAL_CALL_TYPE, YEAR) %>% 
+  summarise(count = n())
+
+df2 <-
+  pre_covid %>%
+  filter(FINAL_CALL_TYPE == c("CARDIAC","RESP","BREATH","ASTHMA", "SICK")) %>% 
+  group_by(MONTH,FINAL_CALL_TYPE, YEAR) %>% 
+  summarise(count = n())
+
+df=full_join(df1, df2, by=c("MONTH", "FINAL_CALL_TYPE", "count", "YEAR"))
+
+p=ggplot(data=df, aes(x=MONTH,y=count,fill=FINAL_CALL_TYPE)) + 
+  geom_line(aes(color=FINAL_CALL_TYPE)) + geom_point(aes(color=FINAL_CALL_TYPE))
+p= p + facet_grid(cols = vars(YEAR)) + scale_x_continuous(breaks=c(1:12))
+p + xlab("Month") + ylab("Total # of Calls") + 
+  ggtitle("COVID Symptom-Related EMS Calls in NYC")
+```
+
+## How did call types change pre-COVID versus during COVID?
+
+<div class = "white">
+*SPACER
+</div>
+
+<center>
+<div class = "yellow3">
+<font size = "6">
+*There was a considerable spike in COVID symptom-related EMS call types at the onset of the pandemic, but the increase was not a sustained change. By May 2020, the number of calls were either at or below pre-COVID volumes.*
+</font>
+</div>
+<center>
+
+# Sub-Question #2
+
+<div class = "yellow">
+<font size = "12">
+How did transit times to the hospital change pre-COVID versus during COVID?
+__________________________
+</font>
+</div>
+<center>
+
+## 
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="Transit Times to Hospital by Borough, Pre-COVID vs. During COVID"}
+hosp_depart <- strptime(c(pre_covid$FIRST_TO_HOSP_DATETIME), 
+                               format = "%m/%d/%Y %I:%M:%S %p", 
+                               tz = "EST")
+hosp_arrive <- strptime(c(pre_covid$FIRST_HOSP_ARRIVAL_DATETIME), 
+                                format = "%m/%d/%Y %I:%M:%S %p", 
+                                tz = "EST")
+
+pre_covid$DURATION_TO_HOSP <- difftime(hosp_arrive, hosp_depart, units = "mins")
+
+p1data.a <- data.frame("DURATION_TO_HOSP" = pre_covid$DURATION_TO_HOSP,
+                       "BOROUGH" = pre_covid$BOROUGH)
+p1data.b <- subset(p1data.a, p1data.a$DURATION_TO_HOSP >= 0)
+
+## During Covid hospital travel time
+hosp_depart <- strptime(c(covid$FIRST_TO_HOSP_DATETIME), 
+                               format = "%m/%d/%Y %I:%M:%S %p", 
+                               tz = "EST")
+hosp_arrive <- strptime(c(covid$FIRST_HOSP_ARRIVAL_DATETIME), 
+                                format = "%m/%d/%Y %I:%M:%S %p", 
+                                tz = "EST")
+covid$DURATION_TO_HOSP <- difftime(hosp_arrive, hosp_depart, 
+                                    units = "mins")
+
+p1data.c <- data.frame("DURATION_TO_HOSP" = covid$DURATION_TO_HOSP,
+                       "BOROUGH" = covid$BOROUGH)
+p1data.d <- subset(p1data.c, p1data.c$DURATION_TO_HOSP >= 0)
+p1data.d <- subset(p1data.d, p1data.d$DURATION_TO_HOSP <= 150)
+
+## Box plots
+p1 = qplot(DURATION_TO_HOSP, BOROUGH, data = p1data.b, geom = "boxplot", 
+      color = BOROUGH,
+      xlab = "Duration of Drive to Hospital (mins)",
+      ylab = "Borough",
+      main = "Pre-Covid: Drive Time to Hospital by Borough",
+      show.legend = FALSE) +
+  scale_x_continuous(breaks = seq(0,250,50)) +
+  scale_y_discrete(labels = c("BRONX", "BROOKLYN", "MANHATTAN", "QUEENS", 
+                              "RICHMOND/ \n STATEN ISLAND")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 = qplot(DURATION_TO_HOSP, BOROUGH, data = p1data.d, geom = "boxplot", 
+      color = BOROUGH,
+      xlab = "Duration of Drive to Hospital (mins)",
+      ylab = "Borough",
+      main = "During Covid: Drive Time to Hospital by Borough",
+      show.legend = FALSE) +
+  scale_x_continuous(breaks = seq(0,250,50)) +
+  scale_y_discrete(labels = c("BRONX", "BROOKLYN", "MANHATTAN", "QUEENS", 
+                              "RICHMOND/ \n STATEN ISLAND")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+grid.arrange(p1,p2,nrow = 2)
+```
+
+
+## How did call types change pre-COVID versus during COVID?
+
+<div class = "white">
+*SPACER
+</div>
+
+<center>
+<div class = "yellow3">
+<font size = "6">
+*The relatively homogenous nature of transit times to hospitals across boroughs was unaffected during COVID. However, the distributions of the transit times did shift slightly towards the left during COVID, reflecting shorter transit times.*
+</font>
+</div>
+<center>
+
+# Sub-Question #3
+
+<div class = "yellow">
+<font size = "11">
+Are automobile accidents and the nature of EMS calls related, both pre-COVID and during COVID?
+__________________________
+</font>
+</div>
+<center>
+
+##
+
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="Motor Vehicle Accidnets, Injuries, and Deaths in NYC, Pre-COVID vs. During COVID"}
+
+### Reading in MVA data:
+res = dbSendQuery(conn = dcon, "SELECT *
+FROM Motor_Vehicle_Collisions")
+MVA = dbFetch(res, -1)
+dbClearResult(res)
+dbDisconnect(dcon)
+
+pre_covid_MVA = MVA %>% filter(str_detect(CRASHDATE, ".*/2019"))
+covid_MVA = MVA %>% filter(str_detect(CRASHDATE, ".*/2020"))
+
+covid_MVA$MONTH = as.integer(str_split(covid_MVA$CRASHDATE, "/", simplify = TRUE)[,1])
+covid_MVA$YEAR = as.character(str_sub(covid_MVA$CRASHDATE, -4))
+
+pre_covid_MVA$MONTH = as.integer(str_split(pre_covid_MVA$CRASHDATE, "/", simplify = TRUE)[,1])
+pre_covid_MVA$YEAR = as.character(str_sub(pre_covid_MVA$CRASHDATE, -4))
+
+df1 <-
+  covid_MVA %>% 
+  group_by(MONTH,YEAR)  %>% 
+  summarise(count = n(),
+            Injuries=sum(NUMBEROFPERSONSINJURED),
+            Deaths = sum(NUMBEROFPERSONSKILLED))
+
+df2 <-
+  pre_covid_MVA %>% 
+  group_by(MONTH,YEAR)  %>% 
+  summarise(count = n(),
+            Injuries=sum(NUMBEROFPERSONSINJURED),
+            Deaths = sum(NUMBEROFPERSONSKILLED))
+
+df=full_join(df1, df2, by=c("MONTH", "YEAR", "count","Injuries","Deaths"))
+
+p1=ggplot(data=df, aes(x=MONTH,y=count,fill=YEAR)) + 
+  ylab("Total # of Accidents") +
+  ggtitle("Motor Vehicle Accidents, Injuries, and Deaths in NYC") +
+  geom_line(aes(color=YEAR)) + geom_point(aes(color=YEAR))
+p1=p1 + scale_x_continuous(breaks=c(1:12)) + 
+  theme(axis.title.x=element_blank())
+
+
+p2=ggplot(data=df, aes(x=MONTH,y=Injuries,fill=YEAR)) + 
+  geom_line(aes(color=YEAR)) + geom_point(aes(color=YEAR)) +
+  ylab("# of Injuries") + theme(axis.title.x=element_blank()) 
+p2 = p2 + scale_x_continuous(breaks=c(1:12)) 
+
+
+p3=ggplot(data=df, aes(x=MONTH,y=Deaths,fill=YEAR)) + 
+  geom_line(aes(color=YEAR)) + geom_point(aes(color=YEAR))+
+  xlab("Month")+ylab("# of Deaths")
+p3 = p3 + scale_x_continuous(breaks=c(1:12)) 
+
+g2 <- ggplotGrob(p1)
+g3 <- ggplotGrob(p2)
+g4 <- ggplotGrob(p3)
+g <- rbind(g2, g3, g4, size = "first")
+g$widths <- unit.pmax(g2$widths, g3$widths)
+grid.draw(g)
+```
+
+##
+
+```{r, echo=F, message=FALSE, warning=FALSE, fig.cap="Daily Number of Car Crashes and Average Call Response Time, Pre-COVID vs. During COVID"}
+pre_covid_MVA$CRASHDATE <- as.Date(pre_covid_MVA$CRASHDATE, format = "%m/%d/%Y")
+
+pre_covid_MVA <-
+  pre_covid_MVA  %>% 
+  filter(CRASHDATE >= "2019-03-23") %>% 
+  group_by(CRASHDATE) %>%
+  summarise(count = n()) %>% 
+  rename(INCIDENT_DATETIME = CRASHDATE)
+
+pre_covid_EMS = pre_covid_calls
+
+pre_covid_EMS$INCIDENT_DATETIME=str_sub(pre_covid_EMS$INCIDENT_DATETIME, 1, 10)
+pre_covid_EMS$INCIDENT_DATETIME <- as.Date(pre_covid_EMS$INCIDENT_DATETIME, format = "%Y-%m-%d")
+
+pre_covid_EMS <-
+  pre_covid_EMS %>%
+  group_by(INCIDENT_DATETIME) %>%
+  summarise(mean = mean(as.numeric(INCIDENT_RESPONSE_SECONDS_QY), na.rm = TRUE))
+
+pre_all = full_join(pre_covid_MVA, pre_covid_EMS, by = "INCIDENT_DATETIME")
+
+p1=ggplot(pre_all) + aes(x = count, y = mean) +
+  geom_point() + 
+  geom_smooth(method = lm) +
+  labs (title = "Pre-Covid: Number of Car Crashes and Avg Call Response Time") +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+## During Covid
+covid_MVA$CRASHDATE <- as.Date(covid_MVA$CRASHDATE, format = "%m/%d/%Y")
+
+covid_MVA <-
+  covid_MVA  %>% 
+  filter(CRASHDATE >= "2019-03-23") %>% 
+  group_by(CRASHDATE) %>%
+  summarise(count = n()) %>% 
+  rename(INCIDENT_DATETIME = CRASHDATE)
+
+covid_EMS = covid_calls
+
+covid_EMS$INCIDENT_DATETIME=str_sub(covid_EMS$INCIDENT_DATETIME, 1, 10)
+covid_EMS$INCIDENT_DATETIME <- as.Date(covid_EMS$INCIDENT_DATETIME, format = "%Y-%m-%d")
+
+covid_EMS <-
+  covid_EMS %>%
+  group_by(INCIDENT_DATETIME) %>%
+  summarise(mean = mean(as.numeric(INCIDENT_RESPONSE_SECONDS_QY), na.rm = TRUE))
+
+during_all = full_join(covid_MVA, covid_EMS, by = "INCIDENT_DATETIME")
+
+p2=ggplot(during_all) + aes(x = count, y = mean) + xlim(100,400) +
+  geom_point() + 
+  geom_smooth(method = lm) +
+  labs (title = "During Covid: Number of Car Crashes and Avg Call Response Time") +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+grid.arrange(p1,p2,nrow = 2, left = "Daily Avg Call Response Time",
+             bottom = "Daily Number of Car Crashes")
+
+```
+
+## Are automobile accidents and the nature of EMS calls related, both pre-COVID and during COVID?
+
+<center>
+<div class = "yellow3">
+<font size = "6">
+*Automobile accidents and incident response time appeared to be positively correlated pre-COVID, but that positive correlation disappeared during COVID. It seems that with fewer overall collisions and most probably lighter traffic during COVID, traffic conditions stopped being an important determinant of response time.*
+</font>
+</div>
+<center>
+
+# Killer Plot
+<div class = "yellow">
+<font size = "12">
+How has the COVID-19 pandemic affected the way that the City of New York responds to EMS calls?
+__________________________
+</font>
+</div>
+<center>
+  
+##
+
+```{r}
+library(shiny)
+      # Data Cleaning
+covid_calls$INCIDENT_CLOSE_DATETIME = strptime(covid_calls$INCIDENT_CLOSE_DATETIME, format = "%m /%d/%Y %I:%M:%S %p", tz = "EST")
+covid_calls$Diff_Time_Total = -1*as.integer(difftime(covid_calls$INCIDENT_DATETIME, covid_calls$INCIDENT_CLOSE_DATETIME, units = "mins"))
+pre_covid_calls$INCIDENT_CLOSE_DATETIME = strptime(pre_covid_calls$INCIDENT_CLOSE_DATETIME, format = "%m /%d/%Y %I:%M:%S %p", tz = "EST")
+pre_covid_calls$Diff_Time_Total = -1*as.integer(difftime(pre_covid_calls$INCIDENT_DATETIME, pre_covid_calls$INCIDENT_CLOSE_DATETIME, units = "mins"))
+
+covid_calls$FINAL_SEVERITY_LEVEL_CODE = factor(covid_calls$FINAL_SEVERITY_LEVEL_CODE)
+
+precincts = covid_calls %>% filter(Diff_Time_Total >= 0, !is.na(POLICEPRECINCT)) %>% group_by(BOROUGH, POLICEPRECINCT) %>% arrange(BOROUGH) %>% summarise(mean(Diff_Time_Total), n(), mean(as.integer(FINAL_SEVERITY_LEVEL_CODE)))
+precincts = precincts %>% filter(`n()` > 100)
+precincts.2 = pre_covid_calls %>% filter(Diff_Time_Total >= 0, !is.na(POLICEPRECINCT)) %>% group_by(BOROUGH, POLICEPRECINCT) %>% arrange(BOROUGH) %>% summarise(mean(Diff_Time_Total), n(), mean(as.integer(FINAL_SEVERITY_LEVEL_CODE)))
+precincts.2 = precincts.2 %>% filter(`n()` > 100)
+ui <- fluidPage(
+  titlePanel("Number of Calls and Estimated Call Time by Police Precinct"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxInput("checkbox", "Scale by Borough")
+    ),
+    mainPanel(
+      plotOutput("KillerPlot")
+    )
+  )
+)
+server <- function(input, output){
+
+  output$KillerPlot <- renderPlot({
+
+# Sample of our killer plot
+pre_cov_col = "coral2"
+cov_col = "cadetblue2"
+if (input$checkbox) {
+  r = .12
+
+## BRONX
+
+bronx = precincts[which(precincts$BOROUGH == "BRONX"),]
+bronx$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(bronx$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+bronx.2 = precincts.2[which(precincts$BOROUGH == "BRONX"),]
+bronx.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(bronx.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+bronx.angles = 1:length(bronx$POLICEPRECINCT) / length(bronx$POLICEPRECINCT) * 2 * pi
+bronx.angles.2 = 1:length(bronx.2$POLICEPRECINCT) / length(bronx.2$POLICEPRECINCT) * 2 * pi
+bronx.radii = r * bronx$`mean(Diff_Time_Total)`/max(bronx$`mean(Diff_Time_Total)`)
+bronx.radii.2 = r * bronx.2$`mean(Diff_Time_Total)`/max(bronx$`mean(Diff_Time_Total)`)
+bronx.x =bronx.radii * cos(bronx.angles) + .5
+bronx.y =bronx.radii * sin(bronx.angles) + .5
+bronx.x.2 =bronx.radii.2 * cos(bronx.angles.2) + .5
+bronx.y.2 =bronx.radii.2 * sin(bronx.angles.2) + .5
+bronx.x.labs =bronx.radii * 1.3 * cos(bronx.angles) + .5
+bronx.y.labs =bronx.radii *1.3 * sin(bronx.angles) + .5
+bronx.size = bronx$`n()`/ max(bronx$`n()`)
+bronx.size.2 = bronx.2$`n()`/ max(bronx$`n()`)
+bronx.point_labs = bronx$POLICEPRECINCT
+
+## MANHATTAN
+
+manhattan = precincts[which(precincts$BOROUGH == "MANHATTAN"),]
+manhattan$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(manhattan$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+manhattan.2 = precincts.2[which(precincts$BOROUGH == "MANHATTAN"),]
+manhattan.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(manhattan.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+manhattan.angles = (1:length(manhattan$POLICEPRECINCT) / length(manhattan$POLICEPRECINCT)) * 2 * pi
+manhattan.angles.2 = (1:length(manhattan.2$POLICEPRECINCT) / length(manhattan.2$POLICEPRECINCT)) * 2 * pi
+manhattan.radii = r * manhattan$`mean(Diff_Time_Total)`/max(manhattan$`mean(Diff_Time_Total)`)
+manhattan.radii.2 = r * manhattan.2$`mean(Diff_Time_Total)`/max(manhattan$`mean(Diff_Time_Total)`)
+manhattan.x =manhattan.radii * cos(manhattan.angles) + .25
+manhattan.y =manhattan.radii * sin(manhattan.angles) + .75
+manhattan.x.2 =manhattan.radii.2 * cos(manhattan.angles.2) + .25
+manhattan.y.2 =manhattan.radii.2 * sin(manhattan.angles.2) + .75
+manhattan.x.labs =manhattan.radii * 1.3 * cos(manhattan.angles) + .25
+manhattan.y.labs =manhattan.radii *1.3 * sin(manhattan.angles) + .75
+manhattan.size = manhattan$`n()`/ max(manhattan$`n()`)
+manhattan.size.2 = manhattan.2$`n()`/ max(manhattan$`n()`)
+manhattan.point_labs = manhattan$POLICEPRECINCT
+
+## BROOKLYN
+
+brooklyn = precincts[which(precincts$BOROUGH == "BROOKLYN"),]
+brooklyn$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(brooklyn$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+brooklyn.2 = precincts.2[which(precincts$BOROUGH == "BROOKLYN"),]
+brooklyn.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(brooklyn.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+brooklyn.angles = (1:length(brooklyn$POLICEPRECINCT) / length(brooklyn$POLICEPRECINCT)) * 2 * pi
+brooklyn.angles.2 = (1:length(brooklyn.2$POLICEPRECINCT) / length(brooklyn.2$POLICEPRECINCT)) * 2 * pi
+brooklyn.radii = r * brooklyn$`mean(Diff_Time_Total)`/max(brooklyn$`mean(Diff_Time_Total)`)
+brooklyn.radii.2 = r * brooklyn.2$`mean(Diff_Time_Total)`/max(brooklyn$`mean(Diff_Time_Total)`)
+brooklyn.x =brooklyn.radii * cos(brooklyn.angles) + .25
+brooklyn.y =brooklyn.radii * sin(brooklyn.angles) + .25
+brooklyn.x.2 =brooklyn.radii.2 * cos(brooklyn.angles.2) + .25
+brooklyn.y.2 =brooklyn.radii.2 * sin(brooklyn.angles.2) + .25
+brooklyn.x.labs =brooklyn.radii * 1.3 * cos(brooklyn.angles) + .25
+brooklyn.y.labs =brooklyn.radii *1.3 * sin(brooklyn.angles) + .25
+brooklyn.size = brooklyn$`n()`/ max(brooklyn$`n()`)
+brooklyn.size.2 = brooklyn.2$`n()`/ max(brooklyn$`n()`)
+brooklyn.point_labs = brooklyn$POLICEPRECINCT
+
+## QUEENS
+
+queens = precincts[which(precincts$BOROUGH == "QUEENS"),]
+queens$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(queens$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+queens.2 = precincts.2[which(precincts$BOROUGH == "QUEENS"),]
+queens.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(queens.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+queens.angles = (1:length(queens$POLICEPRECINCT) / length(queens$POLICEPRECINCT)) * 2 * pi
+queens.angles.2 = (1:length(queens.2$POLICEPRECINCT) / length(queens.2$POLICEPRECINCT)) * 2 * pi
+queens.radii = r * queens$`mean(Diff_Time_Total)`/max(queens$`mean(Diff_Time_Total)`)
+queens.radii.2 = r * queens.2$`mean(Diff_Time_Total)`/max(queens$`mean(Diff_Time_Total)`)
+queens.x =queens.radii * cos(queens.angles) + .75
+queens.y =queens.radii * sin(queens.angles) + .25
+queens.x.2 =queens.radii.2 * cos(queens.angles.2) + .75
+queens.y.2 =queens.radii.2 * sin(queens.angles.2) + .25
+queens.x.labs =queens.radii * 1.3 * cos(queens.angles) + .75
+queens.y.labs =queens.radii *1.3 * sin(queens.angles) + .25
+queens.size = queens$`n()`/ max(queens$`n()`)
+queens.size.2 = queens.2$`n()`/ max(queens$`n()`)
+queens.point_labs = queens$POLICEPRECINCT
+
+## RICHMOND/STATEN ISLAND
+
+rsi = precincts[which(precincts$BOROUGH == "RICHMOND / STATEN ISLAND"),]
+rsi$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(rsi$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+rsi.2 = precincts.2[which(precincts$BOROUGH == "RICHMOND / STATEN ISLAND"),]
+rsi.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(rsi.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+rsi.angles = (1:length(rsi$POLICEPRECINCT) / length(rsi$POLICEPRECINCT)) * 2 * pi
+rsi.angles.2 = (1:length(rsi.2$POLICEPRECINCT) / length(rsi.2$POLICEPRECINCT)) * 2 * pi
+rsi.radii = r * rsi$`mean(Diff_Time_Total)`/max(rsi$`mean(Diff_Time_Total)`)
+rsi.radii.2 = r * rsi.2$`mean(Diff_Time_Total)`/max(rsi$`mean(Diff_Time_Total)`)
+rsi.x =rsi.radii * cos(rsi.angles) + .75
+rsi.y =rsi.radii * sin(rsi.angles) + .75
+rsi.x.2 =rsi.radii.2 * cos(rsi.angles.2) + .75
+rsi.y.2 =rsi.radii.2 * sin(rsi.angles.2) + .75
+rsi.x.labs =rsi.radii * 1.3 * cos(rsi.angles) + .75
+rsi.y.labs =rsi.radii *1.3 * sin(rsi.angles) + .75
+rsi.size = rsi$`n()`/ max(rsi$`n()`)
+rsi.size.2 = rsi.2$`n()`/ max(rsi$`n()`)
+rsi.point_labs = rsi$POLICEPRECINCT
+
+# Randomly selected colors for each severity level
+grid.newpage()
+vp.3 = viewport(x =.5, y = .5)
+
+#Bronx
+bronx.size = unit(bronx.size, "char")
+bronx.size.2 = unit(bronx.size.2, "char")
+grid.points(x = bronx.x, y = bronx.y, size = bronx.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+grid.points(x = bronx.x.2, y = bronx.y.2, size = bronx.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+grid.text(bronx.point_labs, x = bronx.x.labs, gp = gpar(fontsize = 9), y = bronx.y.labs, vp = vp.3)
+grid.text("Bronx", gp = gpar(fontsize = 9))
+
+#Manhattan
+manhattan.size = unit(manhattan.size, "char")
+manhattan.size.2 = unit(manhattan.size.2, "char")
+grid.points(x = manhattan.x, y = manhattan.y, size = manhattan.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+grid.points(x = manhattan.x.2, y = manhattan.y.2, size = manhattan.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+grid.text(manhattan.point_labs, gp = gpar(fontsize = 9), x = manhattan.x.labs, y = manhattan.y.labs, vp = vp.3)
+grid.text("Manhattan", x = .25, gp = gpar(fontsize = 9), y = .75)
+
+#Brooklyn
+
+brooklyn.size = unit(brooklyn.size, "char")
+brooklyn.size.2 = unit(brooklyn.size.2, "char")
+grid.points(x = brooklyn.x, y = brooklyn.y, size = brooklyn.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+grid.points(x = brooklyn.x.2, y = brooklyn.y.2, size = brooklyn.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+grid.text(brooklyn.point_labs, x = brooklyn.x.labs, gp = gpar(fontsize = 9), y = brooklyn.y.labs, vp = vp.3)
+grid.text("Brooklyn", gp = gpar(fontsize = 9), x = .25, y = .25)
+
+#Queens
+
+queens.size = unit(queens.size, "char")
+queens.size.2 = unit(queens.size.2, "char")
+grid.points(x = queens.x, y = queens.y, size = queens.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+grid.points(x = queens.x.2, y = queens.y.2, size = queens.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+grid.text(queens.point_labs, gp = gpar(fontsize = 9), x = queens.x.labs, y = queens.y.labs, vp = vp.3)
+grid.text("Queens", x = .75, gp = gpar(fontsize = 9), y = .25)
+
+# Richmond/Staten Island
+
+rsi.size = unit(rsi.size, "char")
+rsi.size.2 = unit(rsi.size.2, "char")
+grid.points(x = rsi.x, y = rsi.y, size = rsi.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+grid.points(x = rsi.x.2, y = rsi.y.2, size = rsi.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+grid.text(rsi.point_labs, x = rsi.x.labs, gp = gpar(fontsize = 9), y = rsi.y.labs, vp = vp.3)
+grid.text("Richmond/Staten Island", x = .75, gp = gpar(fontsize = 9), y = .75)
+grid.text("Scaled within Borough", x = .5, y = .95, gp = gpar(fontsize = 9), vp = vp.3)
+}
+
+else{
+  
+r = .12
+
+## BRONX
+uniform_length_scaler = max(precincts$`mean(Diff_Time_Total)`)
+uniform_size_scaler = max(precincts$`n()`)
+bronx = precincts[which(precincts$BOROUGH == "BRONX"),]
+bronx$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(bronx$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+bronx.2 = precincts.2[which(precincts$BOROUGH == "BRONX"),]
+bronx.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(bronx.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+bronx.angles = 1:length(bronx$POLICEPRECINCT) / length(bronx$POLICEPRECINCT) * 2 * pi
+bronx.angles.2 = 1:length(bronx.2$POLICEPRECINCT) / length(bronx.2$POLICEPRECINCT) * 2 * pi
+bronx.radii = r * bronx$`mean(Diff_Time_Total)`/ uniform_length_scaler
+bronx.radii.2 = r * bronx.2$`mean(Diff_Time_Total)`/ uniform_length_scaler
+bronx.x =bronx.radii * cos(bronx.angles) + .5
+bronx.y =bronx.radii * sin(bronx.angles) + .5
+bronx.x.2 =bronx.radii.2 * cos(bronx.angles.2) + .5
+bronx.y.2 =bronx.radii.2 * sin(bronx.angles.2) + .5
+bronx.x.labs =bronx.radii * 1.3 * cos(bronx.angles) + .5
+bronx.y.labs =bronx.radii *1.3 * sin(bronx.angles) + .5
+bronx.size = bronx$`n()`/ uniform_size_scaler
+bronx.size.2 = bronx.2$`n()`/ uniform_size_scaler
+bronx.point_labs = bronx$POLICEPRECINCT
+
+## MANHATTAN
+
+manhattan = precincts[which(precincts$BOROUGH == "MANHATTAN"),]
+manhattan$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(manhattan$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+manhattan.2 = precincts.2[which(precincts$BOROUGH == "MANHATTAN"),]
+manhattan.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(manhattan.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+manhattan.angles = (1:length(manhattan$POLICEPRECINCT) / length(manhattan$POLICEPRECINCT)) * 2 * pi
+manhattan.angles.2 = (1:length(manhattan.2$POLICEPRECINCT) / length(manhattan.2$POLICEPRECINCT)) * 2 * pi
+manhattan.radii = r * manhattan$`mean(Diff_Time_Total)`/uniform_length_scaler
+manhattan.radii.2 = r * manhattan.2$`mean(Diff_Time_Total)`/ uniform_length_scaler
+manhattan.x =manhattan.radii * cos(manhattan.angles) + .25
+manhattan.y =manhattan.radii * sin(manhattan.angles) + .75
+manhattan.x.2 =manhattan.radii.2 * cos(manhattan.angles.2) + .25
+manhattan.y.2 =manhattan.radii.2 * sin(manhattan.angles.2) + .75
+manhattan.x.labs =manhattan.radii * 1.3 * cos(manhattan.angles) + .25
+manhattan.y.labs =manhattan.radii *1.3 * sin(manhattan.angles) + .75
+manhattan.size = manhattan$`n()`/ uniform_size_scaler
+manhattan.size.2 = manhattan.2$`n()`/ uniform_size_scaler
+manhattan.point_labs = manhattan$POLICEPRECINCT
+
+## BROOKLYN
+
+brooklyn = precincts[which(precincts$BOROUGH == "BROOKLYN"),]
+brooklyn$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(brooklyn$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+brooklyn.2 = precincts.2[which(precincts$BOROUGH == "BROOKLYN"),]
+brooklyn.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(brooklyn.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+brooklyn.angles = (1:length(brooklyn$POLICEPRECINCT) / length(brooklyn$POLICEPRECINCT)) * 2 * pi
+brooklyn.angles.2 = (1:length(brooklyn.2$POLICEPRECINCT) / length(brooklyn.2$POLICEPRECINCT)) * 2 * pi
+brooklyn.radii = r * brooklyn$`mean(Diff_Time_Total)`/uniform_length_scaler
+brooklyn.radii.2 = r * brooklyn.2$`mean(Diff_Time_Total)`/uniform_length_scaler
+brooklyn.x =brooklyn.radii * cos(brooklyn.angles) + .25
+brooklyn.y =brooklyn.radii * sin(brooklyn.angles) + .25
+brooklyn.x.2 =brooklyn.radii.2 * cos(brooklyn.angles.2) + .25
+brooklyn.y.2 =brooklyn.radii.2 * sin(brooklyn.angles.2) + .25
+brooklyn.x.labs =brooklyn.radii * 1.3 * cos(brooklyn.angles) + .25
+brooklyn.y.labs =brooklyn.radii *1.3 * sin(brooklyn.angles) + .25
+brooklyn.size = brooklyn$`n()`/ uniform_size_scaler
+brooklyn.size.2 = brooklyn.2$`n()`/ uniform_size_scaler
+brooklyn.point_labs = brooklyn$POLICEPRECINCT
+
+## QUEENS
+
+queens = precincts[which(precincts$BOROUGH == "QUEENS"),]
+queens$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(queens$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+queens.2 = precincts.2[which(precincts$BOROUGH == "QUEENS"),]
+queens.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(queens.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+queens.angles = (1:length(queens$POLICEPRECINCT) / length(queens$POLICEPRECINCT)) * 2 * pi
+queens.angles.2 = (1:length(queens.2$POLICEPRECINCT) / length(queens.2$POLICEPRECINCT)) * 2 * pi
+queens.radii = r * queens$`mean(Diff_Time_Total)`/uniform_length_scaler
+queens.radii.2 = r * queens.2$`mean(Diff_Time_Total)`/uniform_length_scaler
+queens.x =queens.radii * cos(queens.angles) + .75
+queens.y =queens.radii * sin(queens.angles) + .25
+queens.x.2 =queens.radii.2 * cos(queens.angles.2) + .75
+queens.y.2 =queens.radii.2 * sin(queens.angles.2) + .25
+queens.x.labs =queens.radii * 1.3 * cos(queens.angles) + .75
+queens.y.labs =queens.radii *1.3 * sin(queens.angles) + .25
+queens.size = queens$`n()`/ uniform_size_scaler
+queens.size.2 = queens.2$`n()`/ uniform_size_scaler
+queens.point_labs = queens$POLICEPRECINCT
+
+## RICHMOND/STATEN ISLAND
+
+rsi = precincts[which(precincts$BOROUGH == "RICHMOND / STATEN ISLAND"),]
+rsi$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(rsi$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+rsi.2 = precincts.2[which(precincts$BOROUGH == "RICHMOND / STATEN ISLAND"),]
+rsi.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))` = as.integer(round(rsi.2$`mean(as.integer(FINAL_SEVERITY_LEVEL_CODE))`))
+
+rsi.angles = (1:length(rsi$POLICEPRECINCT) / length(rsi$POLICEPRECINCT)) * 2 * pi
+rsi.angles.2 = (1:length(rsi.2$POLICEPRECINCT) / length(rsi.2$POLICEPRECINCT)) * 2 * pi
+rsi.radii = r * rsi$`mean(Diff_Time_Total)`/uniform_length_scaler
+rsi.radii.2 = r * rsi.2$`mean(Diff_Time_Total)`/uniform_length_scaler
+rsi.x =rsi.radii * cos(rsi.angles) + .75
+rsi.y =rsi.radii * sin(rsi.angles) + .75
+rsi.x.2 =rsi.radii.2 * cos(rsi.angles.2) + .75
+rsi.y.2 =rsi.radii.2 * sin(rsi.angles.2) + .75
+rsi.x.labs =rsi.radii * 1.3 * cos(rsi.angles) + .75
+rsi.y.labs =rsi.radii *1.3 * sin(rsi.angles) + .75
+rsi.size = rsi$`n()`/ uniform_size_scaler
+rsi.size.2 = rsi.2$`n()`/ uniform_size_scaler
+rsi.point_labs = rsi$POLICEPRECINCT
+
+# Randomly selected colors for each severity level
+grid.newpage()
+vp.3 = viewport(x =.5, y = .5)
+
+#Bronx
+bronx.size = unit(bronx.size, "char")
+bronx.size.2 = unit(bronx.size.2, "char")
+grid.points(x = bronx.x, y = bronx.y, size = bronx.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+grid.points(x = bronx.x.2, y = bronx.y.2, size = bronx.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+            grid.text(bronx.point_labs, x = bronx.x.labs, y = bronx.y.labs, gp = gpar(fontsize = 9), vp = vp.3)
+            grid.text("Bronx", gp = gpar(fontsize = 9))
+            
+            #Manhattan
+            manhattan.size = unit(manhattan.size, "char")
+            manhattan.size.2 = unit(manhattan.size.2, "char")
+            grid.points(x = manhattan.x, y = manhattan.y, size = manhattan.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+            grid.points(x = manhattan.x.2, y = manhattan.y.2, size = manhattan.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+            grid.text(manhattan.point_labs, x = manhattan.x.labs, y = manhattan.y.labs, gp = gpar(fontsize = 9), vp = vp.3)
+            grid.text("Manhattan Precincts", gp = gpar(fontsize = 9), x = .25, y = .75)
+            
+            #Brooklyn
+            
+            brooklyn.size = unit(brooklyn.size, "char")
+            brooklyn.size.2 = unit(brooklyn.size.2, "char")
+            grid.points(x = brooklyn.x, y = brooklyn.y, size = brooklyn.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+            grid.points(x = brooklyn.x.2, y = brooklyn.y.2, size = brooklyn.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+            grid.text(brooklyn.point_labs, x = brooklyn.x.labs, y = brooklyn.y.labs, gp = gpar(fontsize = 9), vp = vp.3)
+            grid.text("Brooklyn", gp = gpar(fontsize = 9), x = .25, y = .25)
+            
+            #Queens
+            
+            queens.size = unit(queens.size, "char")
+            queens.size.2 = unit(queens.size.2, "char")
+            grid.points(x = queens.x, y = queens.y, size = queens.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+            grid.points(x = queens.x.2, y = queens.y.2, size = queens.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+            grid.text(queens.point_labs, x = queens.x.labs, gp = gpar(fontsize = 9), y = queens.y.labs, vp = vp.3)
+            grid.text("Queens", gp = gpar(fontsize = 9), x = .75, y = .25)
+            
+            # Richmond/Staten Island
+            
+            rsi.size = unit(rsi.size, "char")
+            rsi.size.2 = unit(rsi.size.2, "char")
+            grid.points(x = rsi.x, y = rsi.y, size = rsi.size, pch = 1, gp =  gpar(col = cov_col) , vp = vp.3)
+            grid.points(x = rsi.x.2, y = rsi.y.2, size = rsi.size.2, pch = 0 , gp = gpar(col = pre_cov_col) , vp = vp.3)
+            grid.text(rsi.point_labs, x = rsi.x.labs, y = rsi.y.labs, gp = gpar(fontsize = 9), vp = vp.3)
+            grid.text("Richmond/Staten Island", x = .75, y = .75, gp = gpar(fontsize = 9), vp= vp.3)
+            grid.text("Uniformly Scaled", x = .5, y = .95, gp = gpar(fontsize = 9), vp = vp.3)
+}
+
+  }
+    
+  )
+}
+shinyApp(ui = ui, server = server)
+```
+
+## Conclusion
+
+<div class = "white">
+*SPACER
+</div>
+
+* **Our data has implications in policy making.**
+  * Corporate world's COVID policies
+  * NYC's EMS budgeting, allocation of resources among police precincts, and public health campaigns
+* **Our data can serves as part of a case study regarding the effects of a near complete lockdown on emergency services.**
